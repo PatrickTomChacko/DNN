@@ -1,0 +1,249 @@
+---
+title: "AI_ML Assn 2"
+author: "Patrick Tom Chacko 22200149"
+date: "April 4, 2023"
+output: html_document
+---
+
+### Assignment 2
+
+##### Architecture
+
+We can see here that the network has 3 layers and then corresponding input layer.
+Depth of the network is 2
+
+
+Width of Input layer is 3
+Width of hidden layer 1 is 4 (inlcuding bias unit)
+Width of hidden layer 2 is 3 (inlcuding bias unit)
+
+Hidden layer 1
+activation function = "sigmoid"
+
+
+Hidden layer 2
+activation function = "relu"
+
+Size of the network is 10 (excluding the output layer node)
+suitable loss,accuracy_metric,optimizers can be provided during training.
+
+##### Number of parameters
+
+Number of parameters can be calculated here being a simple network
+1st layer gets 3x3 = 9 parameters
+2nd layer gets 4x2 = 8 parameters
+
+(I have used bias unit along with the other units since they have same effect)
+
+Total parameters 17
+
+##### Forward propogation
+Let's store our weights and input variables
+
+```{r}
+x_ <- matrix(c(-0.5,0.3,1),nrow = 3)
+w_1 <- matrix(c(-0.5,0.4,-0.2,-0.3,-0.1,0.4,1.1,-0.8,1.3), nrow = 3, ncol = 3)
+x1_ <-w_1%*%x_    #Input for hidden layer 1
+``` 
+1st layer uses sigmoid activation function
+```{r}
+sigmoid <- function(z){return(exp(z)/(1+exp(z)))}
+x1<- apply(x1_,1,sigmoid)
+x1 <- matrix(c(x1,1),nrow = 4)
+```
+
+```{r}
+w_2 <- matrix(c(0.3,-0.7,1.3,0.5,-0.8,1.2,0.5,-0.8), nrow = 2, ncol = 4)
+```
+2nd layer uses ReLU
+```{r}
+ReLU <- function(z){return(max(0,z))}
+x2_ <- apply(w_2%*%x1,1,ReLU)
+x2 <- matrix(c(x2_,1), nrow = 3)
+```
+Output layer uses identity function
+```{r}
+w_3 <- matrix(c(2.0,1.1,8),nrow = 1)
+w_3%*%x2
+```
+Thus we get an output approx of 8.83.
+
+##### Actual Value
+
+Since the task at hand is regression, a suitable loss function would be to find the MSE (Mean Squared Error) since here we only have 1 observation the loss function is equaivalent to squared loss.
+
+We got a prediction of 8.84 but the actual value is 7, we need to calculate the loss associated with this training instance using an appropriate loss function.   
+
+ 
+
+```{r}
+(8.838573-7)^2
+```
+An error of 3.38  would mean that the model's prediction lies in a region of true value +- 3.38 units so if we cannot tolerate such error then we need to look further to reduce the loss function.
+
+#### R- keras chunk
+
+1) We can see from the function in layer 1 the input shape is 2048, so we can conclude that the number of input units is 2048.
+
+2) We can see here the batch size is set to 544, thus in 1 epoch, 544 samples are run
+
+3) We can see that the final layer activation function = softmax is used , and also the loss is categorical_crossentropy, thus we can say the task performed is classification
+
+4) We can see from the input in the layers that L2 regularization is used
+which is also known as weight-decay.
+
+#### Exercise 3
+```{r}
+#load keras for model
+library('keras')
+```
+```{r}
+load('data_epileptic.RData')
+```
+Target is numeric, let us make it categorical
+```{r}
+# one-hot encoding of target variable
+y <- to_categorical( y - 1 )
+```
+
+
+```{r}
+head(y)
+```
+
+Now let's split our data into test and validation sets, I am going to take 80% of my data as training and rest as val
+```{r}
+TOT <- nrow(x)
+N <- ceiling(TOT*0.80)   #80% for training
+M <- TOT - N     #20% for validation
+set.seed(22200149)
+train <- sample(1:TOT,N)
+val <- setdiff(1:TOT,train)
+
+x_train <- x[train,]
+y_train <- y[train,]
+x_val <- x[val,]
+y_val <- y[val,]
+```
+Let us scale our predictors
+```{r}
+#range
+# range(x_train)
+# range(x_val)
+# range(x_test)
+
+x_train <- scale(x_train, center = TRUE, scale = TRUE)
+x_val <- scale(x_val, center = TRUE, scale = TRUE)
+x_test <- scale(x_test, center = TRUE, scale = TRUE)
+
+```
+Let us fit our Model 1 with 2 hidden layers, 1st layer relu output activation function and with L2 regularization. (I took a subset of hidden units and using a loop trained the model for 20 epochs and the observations helped ,me choose relevant number of units for different layer. HAlving the units in next layer is considered a better approach)
+```{r}
+V = ncol(x)
+model1 <- keras_model_sequential()%>%
+layer_dense(units = 128, activation = "relu", input_shape = V, kernel_regularizer = regularizer_l2(l = 0.009)) %>%
+layer_dense(units = 64, activation = "relu", kernel_regularizer = regularizer_l2(l = 0.009)) %>%
+layer_dense(units = ncol(y_train), activation = "softmax") %>%
+compile(
+loss = "categorical_crossentropy", metrics = "accuracy", optimizer = optimizer_sgd())
+```
+
+Our model is ready to be trained.
+```{r}
+count_params(model1)
+```
+
+```{r}
+# fit the model on the training data
+# and evaluate on test data at each epoch
+bs <- round(TOT * 0.01)
+fit1 <- model1 %>% fit(
+x = x_train, y = y_train,
+validation_data = list(x_val, y_val),
+batch_size = bs,
+epochs = 100,
+verbose = 1,
+callbacks = list(
+callback_early_stopping(monitor = "val_accuracy", patience = 5)
+)
+)
+```
+```{r}
+model2 <- keras_model_sequential()%>%
+layer_dense(units = 128, activation = "relu", input_shape = V, kernel_regularizer = regularizer_l2(l = 0.01)) %>%
+layer_dense(units = 64, activation = "relu", kernel_regularizer = regularizer_l2(l = 0.01)) %>%
+  layer_dense(units = 32, activation = "relu", kernel_regularizer = regularizer_l2(l = 0.01)) %>%
+layer_dense(units = ncol(y_train), activation = "softmax") %>%
+compile(
+loss = "categorical_crossentropy", metrics = "accuracy", optimizer = optimizer_sgd())
+```
+
+```{r}
+fit2 <- model2 %>% fit(
+x = x_train, y = y_train,
+validation_data = list(x_val, y_val),
+batch_size = bs,
+epochs = 100,
+verbose = 1,
+callbacks = list(
+callback_early_stopping(monitor = "val_accuracy", patience = 5)
+)
+)
+```
+
+#### Comparison on performance
+```{r}
+model1 %>% evaluate(x_train, y_train, verbose = 0)
+```
+```{r}
+model1 %>% evaluate(x_val, y_val, verbose = 0)
+```
+
+```{r}
+model2 %>% evaluate(x_train, y_train, verbose = 0)
+```
+```{r}
+model2 %>% evaluate(x_val, y_val, verbose = 0)
+```
+
+
+Having used similar input units, activation function, regularization, loss function and so on we see that Model1 with 2 hidden layers has an accuracy of 63.89% wheras Model2 with 3 hidden layers has an accuracy of 72.06% thus we prefer Model3 , A deeer model is preferred over a big sized shallow network.
+
+Therefore we can see tha adding an extra layer has yielded more accuracy.As we can see/already know that more layers a neaural network has, more complex fitting or function can be taken up by the model, hence the higher complexity leads to better fitting.
+
+
+#### Prediction 
+
+Model1
+```{r}
+y_test <- to_categorical( y_test - 1 )
+```
+
+```{r}
+class_test_hat <- model1 %>% predict(x_test) %>% max.col()
+tab <- table(max.col(y_test), class_test_hat)
+tab <- cbind(tab, cl_acc = diag(tab)/rowSums(tab)) # compute class sensitivity
+names( dimnames(tab) ) <- c("class_test", "class_test_hat") # for readability
+tab
+```
+
+Model 1 (2 hidden layers) has a high accuracy to predict Epileptic seizure activuty and an intermediate prediction for EEG activity of healthy subject with eyes closed.
+
+Model 2
+```{r}
+class_test_hat <- model2 %>% predict(x_test) %>% max.col()
+tab <- table(max.col(y_test), class_test_hat)
+tab <- cbind(tab, cl_acc = diag(tab)/rowSums(tab)) # compute class sensitivity
+names( dimnames(tab) ) <- c("class_test", "class_test_hat") # for readability
+tab
+```
+
+Looking at the table we can see that Model 2 gives better approximation for  Epileptic seizure activity,  Patient with tumor formation, EEG activity recorded on tumor location area during epilepsy-free interval, EEG activity
+of healthy subject with eyes open.
+
+Wheras Model 1 should be preferred for the predicting other two EEG.
+
+So concluding our report we can see that Model2 predicts EEG signal of Tumor formations with approximately 6% more accuracy than Model 1 . We should prefer Model2 for  Patient with tumor formation, EEG activity recorded on tumor location area during epilepsy-free interval,
+
+On the other hand for Patient with tumor formation, EEG activity
+recorded on healthy area during epilepsy-free interval, Model 1 has approximately 4% more accuracy hence Model 1 should be preferred for that. 
